@@ -36,6 +36,7 @@ def register(app) -> None:
     # Import sub-modules so their @agent_v1_bp.route decorators fire.
     from . import health  # noqa: F401
     from . import markets  # noqa: F401
+    from . import market_info  # noqa: F401
     from . import strategies  # noqa: F401
     from . import backtests  # noqa: F401
     from . import experiments  # noqa: F401

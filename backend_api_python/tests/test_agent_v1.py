@@ -127,6 +127,60 @@ def test_whoami_with_valid_token(client, monkeypatch):
     assert data["paper_only"] is True
 
 
+def test_agent_adanos_sentiment_requires_R_scope(client, monkeypatch):
+    """Agent market-info sentiment endpoint is read-scope protected."""
+    agent_auth._schema_ready = True
+    monkeypatch.setattr(agent_auth, "_lookup_token",
+                        lambda raw: _fake_token_row(scopes="B"))
+    monkeypatch.setattr(agent_auth, "_touch_token_last_used", lambda *_: None)
+    monkeypatch.setattr(agent_auth, "_audit", lambda *a, **kw: None)
+
+    resp = client.get(
+        "/api/agent/v1/market-info/adanos-sentiment?tickers=AAPL",
+        headers=_bearer(),
+    )
+
+    assert resp.status_code == 403
+
+
+def test_agent_adanos_sentiment_returns_provider_result(client, monkeypatch):
+    """Agent Gateway exposes Adanos sentiment via bearer agent token."""
+    from app.routes.agent_v1 import market_info
+
+    agent_auth._schema_ready = True
+    monkeypatch.setattr(agent_auth, "_lookup_token",
+                        lambda raw: _fake_token_row(scopes="R"))
+    monkeypatch.setattr(agent_auth, "_touch_token_last_used", lambda *_: None)
+    monkeypatch.setattr(agent_auth, "_audit", lambda *a, **kw: None)
+
+    calls = []
+
+    def fake_fetch(tickers, *, source=None, days=7):
+        calls.append({"tickers": tickers, "source": source, "days": days})
+        return {
+            "enabled": False,
+            "provider": "adanos",
+            "source": source,
+            "days": days,
+            "tickers": ["AAPL"],
+            "stocks": [],
+            "error": "ADANOS_API_KEY is not configured",
+        }
+
+    monkeypatch.setattr(market_info, "fetch_adanos_market_sentiment", fake_fetch)
+
+    resp = client.get(
+        "/api/agent/v1/market-info/adanos-sentiment?tickers=aapl&source=x&days=14",
+        headers=_bearer(),
+    )
+
+    assert resp.status_code == 200
+    body = resp.get_json()
+    assert body["code"] == 0
+    assert body["data"]["provider"] == "adanos"
+    assert calls == [{"tickers": "aapl", "source": "x", "days": 14}]
+
+
 def test_rate_limit_returns_429(client, monkeypatch):
     """Per-token rate limit must trip with 429 once the bucket is full."""
     agent_auth._schema_ready = True
